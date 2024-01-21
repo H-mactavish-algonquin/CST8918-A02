@@ -12,13 +12,15 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		// Get configuration values
 		cfg := config.New(ctx, "")
+		protocol := cfg.Require("protocol")
+		mongoUsername := cfg.Require("mongoUsername")
+		mongoPassword := cfg.RequireSecret("mongoPassword")
 		frontendPort := cfg.RequireFloat64("frontendPort")
 		backendPort := cfg.RequireFloat64("backendPort")
 		mongoPort := cfg.RequireFloat64("mongoPort")
 		mongoHost := cfg.Require("mongoHost") // Note that strings are the default, so it's not `cfg.RequireStr`, just `cfg.Require`
 		database := cfg.Require("database")
 		nodeEnvironment := cfg.Require("nodeEnvironment")
-		protocol := cfg.Require("protocol")
 
 		// Pull the backend image
 		backendImageName := "backend"
@@ -68,6 +70,10 @@ func main() {
 					External: pulumi.Int(mongoPort),
 				},
 			},
+			Envs: pulumi.StringArray{
+				pulumi.String(fmt.Sprintf("MONGO_INITDB_ROOT_USERNAME=%v", mongoUsername)),
+				pulumi.String(fmt.Sprintf("MONGO_INITDB_ROOT_PASSWORD=%v", mongoPassword)),
+			},
 			NetworksAdvanced: &docker.ContainerNetworksAdvancedArray{
 				&docker.ContainerNetworksAdvancedArgs{
 					Name: network.Name,
@@ -93,8 +99,8 @@ func main() {
 				},
 			},
 			Envs: pulumi.StringArray{
-				pulumi.String(fmt.Sprintf("DATABASE_HOST=%v", mongoHost)),
-				pulumi.String(fmt.Sprintf("DATABASE_NAME=%v", database)),
+				pulumi.String(fmt.Sprintf("DATABASE_HOST=mongodb://%v:%v@%v:%v", mongoUsername, mongoPassword, mongoHost, mongoPort)),
+				pulumi.String(fmt.Sprintf("DATABASE_NAME=%v?authSource=admin", database)),
 				pulumi.String(fmt.Sprintf("NODE_ENV=%v", nodeEnvironment)),
 			},
 			NetworksAdvanced: &docker.ContainerNetworksAdvancedArray{
@@ -140,6 +146,9 @@ func main() {
 			return err
 		}
 
+		ctx.Export("url", pulumi.Sprintf("http://localhost:%v", frontendPort))
+		ctx.Export("mongoPassword", mongoPassword)
 		return nil
 	})
+
 }
